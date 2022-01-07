@@ -61,7 +61,15 @@ def read_sheet(sheet, opendoc_params):
     }
     sheet_text = requests.get(sheet_url, params=sheet_params).text
     sheet_json = json.loads(sheet_text)
-    sheet_content = sheet_json["data"]["initialAttributedText"]["text"][0][-1][0]["c"][1]
+    # sheet_content = sheet_json["data"]["initialAttributedText"]["text"][0][-1][0]["c"][1]
+    sheet_content = {}
+    for temp_class in sheet_json["data"]["initialAttributedText"]["text"][0]:
+        if type(temp_class[0]) == dict and "c" in temp_class[0].keys():
+            if len(temp_class[0]["c"]) > 1 and type(temp_class[0]["c"][1]) == dict:
+                temp = temp_class[0]["c"][1] # type: dict
+                for k, v in temp.items():
+                    if k.isdigit() and type(v) == dict:
+                        sheet_content[k] = v
     return sheet_content, max_col
 
 def read_callback(text):
