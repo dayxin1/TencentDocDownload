@@ -1,16 +1,33 @@
+import string
 import requests
 import re
 from urllib.parse import urlparse
-import json
+import json,datetime,time
+import load_cookies
 
-def initial_fetch(url):
-    init_url = url
-    if (init_url.find('?') != -1):
-        init_url = init_url[:init_url.find('?')]
+# cookie_string = "" #可以手动写死cookies内容
+class user_data():
+    def __init__(self):
+        self.cookies = None
 
-    init_text = requests.get(init_url).text
+    def set_cookies(self, cookiesfile):
+        self.cookies = load_cookies.load_cookies(cookiesfile)
 
-    t = re.search(r"&t=(\d+)\"", init_text).group(1)
+    def get_cookies(self):
+        cookie_strings = []
+        if self.cookies != None:
+            for cookie in list(self.cookies):
+                cookie_strings.append(cookie.name + '=' + cookie.value)
+        cookie_headers = {'cookie': '; '.join(cookie_strings)}
+        # cookie_headers = {'cookie': cookie_string} #手动写死cookies内容
+        return cookie_headers
+
+
+def initial_fetch(url:string, cookie_data:user_data):
+    init_url = re.search(r"((.+))\?|(.+)",url).group(1) # 无url参数的形式的url
+
+    t = datetime.datetime.timestamp( datetime.datetime.now() )
+    t = int(t*1000) # 取当前毫秒时间戳，不需要从页面获取
     id = re.search(r"/sheet/(.+)\??", init_url).group(1)
 
     opendoc_url = "https://docs.qq.com/dop-api/opendoc"
@@ -26,7 +43,14 @@ def initial_fetch(url):
         "xsrf" : "",
         "t" : t
     }
-    opendoc_text = requests.get(opendoc_url, params=opendoc_params).text
+    header={
+        "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36",
+        "Referer":re.search(r"(.+)\?|(.+)",init_url).group(0),
+        # "cookie": cookie_string
+    }
+    header.update(cookie_data.get_cookies())
+
+    opendoc_text = requests.get(opendoc_url, headers=header, params=opendoc_params).text
     opendoc_json = read_callback(opendoc_text)
 
     title = opendoc_json["clientVars"]["title"]
@@ -36,10 +60,19 @@ def initial_fetch(url):
 
     return title, tabs, opendoc_params
 
-def read_sheet(sheet, opendoc_params):
+def read_sheet(url:string, sheet, opendoc_params, cookie_data:user_data):
+    init_url = url
     opendoc_url = "https://docs.qq.com/dop-api/opendoc"
     opendoc_params["tab"] = sheet
-    opendoc_text = requests.get(opendoc_url, params=opendoc_params).text
+
+    header={
+        "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36",
+        "Referer":re.search(r"(.+)\?|(.+)",init_url).group(0),
+        # "cookie": cookie_string
+    }
+    header.update(cookie_data.get_cookies())
+
+    opendoc_text = requests.get(opendoc_url, headers=header, params=opendoc_params).text
     opendoc_json = read_callback(opendoc_text)
     max_row = opendoc_json["clientVars"]["collab_client_vars"]["maxRow"]
     max_col = opendoc_json["clientVars"]["collab_client_vars"]["maxCol"]
@@ -59,7 +92,7 @@ def read_sheet(sheet, opendoc_params):
         "nowb" : "1",
         "rev" : rev
     }
-    sheet_text = requests.get(sheet_url, params=sheet_params).text
+    sheet_text = requests.get(sheet_url, headers=header, params=sheet_params).text
     sheet_json = json.loads(sheet_text)
     # sheet_content = sheet_json["data"]["initialAttributedText"]["text"][0][-1][0]["c"][1]
     sheet_content = {}
